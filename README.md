@@ -2,7 +2,7 @@
 
 A minimal wrapper around `dot` available at least on Linux systems to generate dependency-graphs.
 
-[asdf-dependency-graph.png](./asdf-dependency-graph.png)
+![asdf-dependency-graph.png](./asdf-dependency-graph.png?raw=true)
 
 (Caveat to the above graph: external dependency of `dot`.)
 
