@@ -13,6 +13,21 @@ NIL
 
 (Caveat to the above graph: external dependency of `dot`.)
 
+```lisp
+CL-USER> (let ((asdf-dependency-graph:*interesting-systems*
+                 '("extensible-compound-types"
+                   "polymorphic-functions"
+                   "cl-form-types"
+                   "ctype"
+                   "polymorph.maths")))
+           (asdf-dependency-graph:generate "maths.png" "polymorph.maths"))
+NIL
+NIL
+0
+```
+
+![maths.png](./maths.png?raw=true)
+
 ## Other Solutions
 
 - [asdf-viz](https://github.com/guicho271828/asdf-viz): It was faster/easier to start from scratch and do what I want to do, than dig into `asdf-viz` to figure out how to make it do what I want to do. Lisp Curse :/.
