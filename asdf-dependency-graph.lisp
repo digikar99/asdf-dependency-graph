@@ -1,5 +1,6 @@
 (defpackage #:asdf-dependency-graph
-  (:use #:common-lisp))
+  (:use #:common-lisp)
+  (:export #:generate))
 
 (in-package #:asdf-dependency-graph)
 
@@ -23,7 +24,11 @@
   (let ((target-system (etypecase target-system
                          (string (asdf:find-system target-system))
                          (symbol (asdf:find-system target-system))
-                         (asdf:system target-system))))
+                         (asdf:system target-system)))
+        (img-format (let ((suffix-start (position #\. output-file :from-end t)))
+                      (if suffix-start
+                          (subseq output-file (1+ suffix-start))
+                          "png"))))
     (uiop:with-temporary-file (:type "gv" :pathname path)
       (with-open-file (f path :direction :output
                               :if-exists :supersede)
@@ -33,7 +38,8 @@
           (with-slots (parent child) node
             (format f "  \"~A\" -> \"~A\";" parent child)))
         (write-string "}" f))
-      (uiop:run-program (format nil "dot -Tpng '~A' > '~A'"
+      (uiop:run-program (format nil "dot -T~A '~A' > '~A'"
+                                img-format
                                 (namestring path)
                                 output-file)
                         :error-output *error-output*
