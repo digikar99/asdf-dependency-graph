@@ -5,37 +5,43 @@
 
 (in-package #:asdf-dependency-graph)
 
-(defstruct node parent child)
+(defstruct node parent child (condition ""))
 
 (defun name-from-system-description (system-description)
-  (optima:match system-description
-    ((list* :feature _ (list :require name) _)
-     (values name :require))
-    ((list* :feature _ name _)
-     (values name :asdf))
-    ((list* :version name _)
-     (values name :asdf))
-    (_
-     (values system-description :asdf))))
+  (flet ((feature-string (requirement)
+           (format nil "(:feature ~A)" (string-downcase (etypecase requirement
+                                                          ((eql nil) "")
+                                                          (string requirement)
+                                                          (list   (write-to-string requirement))
+                                                          (symbol (symbol-name requirement)))))))
+    (optima:match system-description
+      ((list* :feature requirement (list :require name) _)
+       (values name :require (feature-string requirement)))
+      ((list* :feature requirement name _)
+       (values name :asdf (feature-string requirement)))
+      ((list* :version name _)
+       (values name :asdf nil))
+      (_
+       (values system-description :asdf nil)))))
+
+(defun node-name-from-name-type (name type)
+  (ecase type
+    (:require (format nil "(:require ~A)" (string-downcase (string name))))
+    (:asdf name)))
 
 (defun dependency-node-list (asdf-system)
   (declare (type asdf:system asdf-system))
   (let ((child-name (asdf:primary-system-name asdf-system))
         (dependencies (asdf:system-depends-on asdf-system)))
     (loop :for system-description :in dependencies
-          :nconcing (multiple-value-bind (system-name type)
+          :nconcing (multiple-value-bind (system-name type requirement)
                         (name-from-system-description system-description)
-                      (ecase type
-                        (:require
-                         (list (make-node
-                                :parent
-                                (format nil "(:require ~A)" (string-downcase system-name))
-                                :child
-                                child-name)))
-                        (:asdf
-                         (cons (make-node :parent system-name
-                                          :child child-name)
-                               (dependency-node-list (asdf:find-system system-name)))))))))
+                      (cons (make-node :parent (node-name-from-name-type system-name type)
+                                       :child child-name
+                                       :condition (or requirement ""))
+                            (ecase type
+                              (:require nil)
+                              (:asdf (dependency-node-list (asdf:find-system system-name)))))))))
 
 (defvar *interesting-systems*)
 (setf (documentation '*interesting-systems* 'variable)
@@ -82,12 +88,12 @@ mentioned in *INTERESTING-SYSTEMS*")
                                                :in (asdf:system-depends-on
                                                     (asdf:find-system
                                                      (node-parent node)))
-                                             :for name
-                                               := (name-from-system-description
-                                                   system-description)
                                              :collect
-                                             (make-node :parent name
-                                                        :child (node-child node))))))))
+                                             (multiple-value-bind (name type requirement)
+                                                 (name-from-system-description system-description)
+                                               (make-node :parent (node-name-from-name-type name type)
+                                                          :child (node-child node)
+                                                          :condition (or requirement "")))))))))
           node-list))))
 
 (defun generate (output-file target-system)
@@ -108,8 +114,9 @@ mentioned in *INTERESTING-SYSTEMS*")
         (write-string "strict digraph {" f)
         (write-string "rankdir=LR;" f)
         (dolist (node node-list)
-          (with-slots (parent child) node
-            (format f "  \"~A\" -> \"~A\";" parent child)))
+          (with-slots (parent child condition) node
+            (format f "  \"~A\" -> \"~A\" [ label=\"~A\" ];" parent child condition)
+            (terpri f)))
         (write-string "}" f))
       (uiop:run-program (format nil "dot -T~A '~A' > '~A'"
                                 img-format
