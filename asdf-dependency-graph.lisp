@@ -9,20 +9,33 @@
 
 (defun name-from-system-description (system-description)
   (optima:match system-description
+    ((list* :feature _ (list :require name) _)
+     (values name :require))
     ((list* :feature _ name _)
-     name)
+     (values name :asdf))
     ((list* :version name _)
-     name)
-    (_ system-description)))
+     (values name :asdf))
+    (_
+     (values system-description :asdf))))
 
 (defun dependency-node-list (asdf-system)
   (declare (type asdf:system asdf-system))
   (let ((child-name (asdf:primary-system-name asdf-system))
         (dependencies (asdf:system-depends-on asdf-system)))
     (loop :for system-description :in dependencies
-          :nconcing (let ((system-name (name-from-system-description system-description)))
-                      (cons (make-node :parent system-name :child child-name)
-                            (dependency-node-list (asdf:find-system system-name)))))))
+          :nconcing (multiple-value-bind (system-name type)
+                        (name-from-system-description system-description)
+                      (ecase type
+                        (:require
+                         (list (make-node
+                                :parent
+                                (format nil "(:require ~A)" (string-downcase system-name))
+                                :child
+                                child-name)))
+                        (:asdf
+                         (cons (make-node :parent system-name
+                                          :child child-name)
+                               (dependency-node-list (asdf:find-system system-name)))))))))
 
 (defvar *interesting-systems*)
 (setf (documentation '*interesting-systems* 'variable)
@@ -47,6 +60,16 @@ mentioned in *INTERESTING-SYSTEMS*")
                                  (string system)))))
           (loop :until (all-nodes-are-interesting-p node-list)
                 :do (setq node-list
+                          ;; - If both parent and child are interesting, keep the node.
+                          ;; - If only the child is interesting, ignore this node, but
+                          ;;   add the nodes connecting child to the parent-of-parents.
+                          ;;   Eventually, over multiple rounds, all the nodes will
+                          ;;   become interesting.
+                          ;; - If the child is not interesting, then two ways to reach
+                          ;;   this state include
+                          ;;   (i)  child was a target-system, in which case, we are
+                          ;;        not bothered about its ancestors at all.
+                          ;;   (ii) child was not a target-system. FIXME: What about this case?
                           (loop :for node :in node-list
                                 :nconcing
                                 (cond ((and (member (node-parent node)
